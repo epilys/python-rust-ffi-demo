@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::io::Read;
 use std::io::{self, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::process::Command;
@@ -137,12 +138,38 @@ fn main() {
     });
     unsafe { lib.Py_SetProgramName(b"afdsfa\0".as_ptr() as _) };
     unsafe { lib.Py_Initialize() };
+    let mut libmeli = std::fs::File::open("libmeliplugin.py").unwrap();
+    let mut libmeli_cstr = vec![];
+    libmeli.read_to_end(&mut libmeli_cstr).unwrap();
+    let mut libmeli_cstr = std::ffi::CString::new(libmeli_cstr).unwrap();
+    let mut libmelicode = unsafe {
+        lib.Py_CompileStringExFlags(
+            libmeli_cstr.as_ptr() as _,
+            b"libmeliplugin.py\0".as_ptr() as _,
+            257,                  // Py_file_input
+            std::ptr::null_mut(), //compiler_flags,
+            0,
+        )
+    };
+    //std::dbg!(&libmelicode);
+    let pluginmodule = unsafe {
+        lib.PyImport_ExecCodeModuleEx(
+            b"libmeliplugin\0".as_ptr() as _,
+            libmelicode,
+            b"libmeliplugin.py\0".as_ptr() as _,
+        )
+    };
+    if pluginmodule.is_null() {
+        unsafe { lib.PyErr_Print() };
+        return;
+    }
+    std::dbg!(&pluginmodule);
     //unsafe { lib.PyImport_ImportModule(b"emb\0".as_ptr() as _) };
 
     let ret = unsafe {
         lib.PyRun_SimpleString(
             //b"from time import time,ctime\nprint('Today is', ctime(time()))\n\0".as_ptr() as _,
-            b"import emb\nprint(\"Number of arguments\", emb.s('Im a python string'))\n\0".as_ptr()
+            b"import emb\nimport libmeliplugin\nprint(dir(libmeliplugin))\nprint(\"Number of arguments\", emb.s('Im a python string'))\n\0".as_ptr()
                 as _,
         )
     };
