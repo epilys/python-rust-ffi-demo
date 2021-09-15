@@ -29,7 +29,7 @@ pub const PyModuleDef_HEAD_INIT: PyModuleDef_Base = PyModuleDef_Base {
 
 #[repr(C)]
 pub struct Methods {
-    methods: [PyMethodDef; 3],
+    methods: [PyMethodDef; 4],
 }
 pub const EmbMethod: PyMethodDef = PyMethodDef {
     ml_name: b"numargs\0".as_ptr() as _,
@@ -43,6 +43,12 @@ pub const EmbSMethod: PyMethodDef = PyMethodDef {
     ml_flags: METH_VARARGS,
     ml_doc: b"\0".as_ptr() as _,
 };
+pub const EmbOMethod: PyMethodDef = PyMethodDef {
+    ml_name: b"o\0".as_ptr() as _,
+    ml_meth: Some(emb_o),
+    ml_flags: METH_VARARGS,
+    ml_doc: b"\0".as_ptr() as _,
+};
 pub const SentinelMethod: PyMethodDef = PyMethodDef {
     ml_name: std::ptr::null(),
     ml_meth: None,
@@ -51,7 +57,7 @@ pub const SentinelMethod: PyMethodDef = PyMethodDef {
 };
 
 pub const EmbMethods: Methods = Methods {
-    methods: [EmbMethod, EmbSMethod, SentinelMethod],
+    methods: [EmbMethod, EmbSMethod, EmbOMethod, SentinelMethod],
 };
 
 pub const EmptySlot: PyModuleDef_Slot = PyModuleDef_Slot {
@@ -104,6 +110,23 @@ unsafe extern "C" fn emb_s(_self: *mut PyObject, args: *mut PyObject) -> *mut Py
     ret
 }
 
+// Prints input type
+unsafe extern "C" fn emb_o(_self: *mut PyObject, args: *mut PyObject) -> *mut PyObject {
+    let lib = get_lib().unwrap();
+    let mut o: *mut PyObject = std::ptr::null_mut();
+    if (lib.PyArg_ParseTuple.as_ref().unwrap())(args, b"O\0".as_ptr() as _, &mut o as *mut *mut _)
+        == 0
+    {
+        return std::ptr::null_mut();
+    }
+    let typeobj: *const PyTypeObject = unsafe { (*o).ob_type };
+    let cs = unsafe { std::ffi::CStr::from_ptr((*typeobj).tp_name) };
+    println!("emb_o o = {:?}", cs);
+    let ret = return_none(&lib);
+    std::mem::forget(lib);
+    ret
+}
+
 fn get_lib() -> Result<PythonLib, String> {
     let output = Command::new("python3.9-config")
         .arg("--configdir")
@@ -123,6 +146,14 @@ fn get_lib() -> Result<PythonLib, String> {
             .map_err(|err| format!("failed to load libpython: {}", err))?)
     }
 }
+
+fn file_to_cstring(path: &str) -> std::ffi::CString {
+    let mut f = std::fs::File::open(path).unwrap();
+    let mut vec = vec![];
+    f.read_to_end(&mut vec).unwrap();
+    std::ffi::CString::new(vec).unwrap()
+}
+
 fn main() {
     /* Return the number of arguments of the application command line */
     //let lparam = closure_pointer_pointer as usize;
@@ -138,10 +169,7 @@ fn main() {
     });
     unsafe { lib.Py_SetProgramName(b"afdsfa\0".as_ptr() as _) };
     unsafe { lib.Py_Initialize() };
-    let mut libmeli = std::fs::File::open("libmeliplugin.py").unwrap();
-    let mut libmeli_cstr = vec![];
-    libmeli.read_to_end(&mut libmeli_cstr).unwrap();
-    let mut libmeli_cstr = std::ffi::CString::new(libmeli_cstr).unwrap();
+    let mut libmeli_cstr = file_to_cstring("libmeliplugin.py");
     let mut libmelicode = unsafe {
         lib.Py_CompileStringExFlags(
             libmeli_cstr.as_ptr() as _,
@@ -166,11 +194,12 @@ fn main() {
     std::dbg!(&pluginmodule);
     //unsafe { lib.PyImport_ImportModule(b"emb\0".as_ptr() as _) };
 
+    let mut input_cstr = file_to_cstring("input.py");
     let ret = unsafe {
         lib.PyRun_SimpleString(
             //b"from time import time,ctime\nprint('Today is', ctime(time()))\n\0".as_ptr() as _,
-            b"import emb\nimport libmeliplugin\nprint(dir(libmeliplugin))\nprint(\"Number of arguments\", emb.s('Im a python string'))\n\0".as_ptr()
-                as _,
+            //b"import emb\nimport libmeliplugin\nprint(dir(libmeliplugin))\nprint(\"Number of arguments\", emb.s('Im a python string'))\n\0".as_ptr() as _,
+            input_cstr.as_ptr() as _,
         )
     };
     println!("ret: {:?}", ret);
