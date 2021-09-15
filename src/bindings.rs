@@ -9694,6 +9694,7 @@ pub struct _dictkeysobject {
 extern crate libloading;
 pub struct PythonLib {
     __library: ::libloading::Library,
+    pub _Py_NoneStruct: *const PyObject,
     pub _Py_get_387controlword:
         Result<unsafe extern "C" fn() -> ::std::os::raw::c_ushort, ::libloading::Error>,
     pub _Py_set_387controlword:
@@ -15859,6 +15860,8 @@ impl PythonLib {
         L: Into<::libloading::Library>,
     {
         let __library = library.into();
+        let _Py_NoneStruct: *mut PyObject =
+            __library.get(b"_Py_NoneStruct\0").map(|sym| *sym).unwrap();
         let _Py_get_387controlword = __library.get(b"_Py_get_387controlword\0").map(|sym| *sym);
         let _Py_set_387controlword = __library.get(b"_Py_set_387controlword\0").map(|sym| *sym);
         let _Py_bit_length = __library.get(b"_Py_bit_length\0").map(|sym| *sym);
@@ -17644,6 +17647,7 @@ impl PythonLib {
             .map(|sym| *sym);
         Ok(PythonLib {
             __library,
+            _Py_NoneStruct,
             _Py_get_387controlword,
             _Py_set_387controlword,
             _Py_bit_length,

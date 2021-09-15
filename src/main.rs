@@ -8,6 +8,13 @@ use bindings::*;
 
 const METH_VARARGS: i32 = 0x0001;
 
+#[inline]
+pub unsafe fn return_none(lib: &PythonLib) -> *mut PyObject {
+    let none = lib._Py_NoneStruct as *const PyObject as *mut PyObject;
+    lib.Py_IncRef(none);
+    none
+}
+
 pub const PyObject_HEAD_INIT: PyObject = PyObject {
     ob_refcnt: 1,
     ob_type: std::ptr::null_mut(),
@@ -21,13 +28,19 @@ pub const PyModuleDef_HEAD_INIT: PyModuleDef_Base = PyModuleDef_Base {
 
 #[repr(C)]
 pub struct Methods {
-    methods: [PyMethodDef; 2],
+    methods: [PyMethodDef; 3],
 }
 pub const EmbMethod: PyMethodDef = PyMethodDef {
     ml_name: b"numargs\0".as_ptr() as _,
     ml_meth: Some(emb_numargs),
     ml_flags: METH_VARARGS,
     ml_doc: b"Return the number of arguments received by the process.\0".as_ptr() as _,
+};
+pub const EmbSMethod: PyMethodDef = PyMethodDef {
+    ml_name: b"s\0".as_ptr() as _,
+    ml_meth: Some(emb_s),
+    ml_flags: METH_VARARGS,
+    ml_doc: b"\0".as_ptr() as _,
 };
 pub const SentinelMethod: PyMethodDef = PyMethodDef {
     ml_name: std::ptr::null(),
@@ -37,7 +50,7 @@ pub const SentinelMethod: PyMethodDef = PyMethodDef {
 };
 
 pub const EmbMethods: Methods = Methods {
-    methods: [EmbMethod, SentinelMethod],
+    methods: [EmbMethod, EmbSMethod, SentinelMethod],
 };
 
 pub const EmptySlot: PyModuleDef_Slot = PyModuleDef_Slot {
@@ -65,9 +78,27 @@ unsafe extern "C" fn PyInit_emb() -> *mut PyObject {
     std::mem::forget(lib);
     ret
 }
+
+// Returns 42
 unsafe extern "C" fn emb_numargs(_self: *mut PyObject, args: *mut PyObject) -> *mut PyObject {
     let lib = get_lib().unwrap();
     let ret = unsafe { lib.PyLong_FromLong(42) };
+    std::mem::forget(lib);
+    ret
+}
+
+// Prints a python string
+unsafe extern "C" fn emb_s(_self: *mut PyObject, args: *mut PyObject) -> *mut PyObject {
+    let lib = get_lib().unwrap();
+    let mut s: *mut ::std::os::raw::c_char = std::ptr::null_mut();
+    if (lib.PyArg_ParseTuple.as_ref().unwrap())(args, b"s\0".as_ptr() as _, &mut s as *mut *mut _)
+        == 0
+    {
+        return std::ptr::null_mut();
+    }
+    let cs = unsafe { std::ffi::CStr::from_ptr(s) };
+    println!("emb_s s = {:?}", cs);
+    let ret = return_none(&lib);
     std::mem::forget(lib);
     ret
 }
@@ -111,7 +142,8 @@ fn main() {
     let ret = unsafe {
         lib.PyRun_SimpleString(
             //b"from time import time,ctime\nprint('Today is', ctime(time()))\n\0".as_ptr() as _,
-            b"import emb\nprint(\"Number of arguments\", emb.numargs())\n\0".as_ptr() as _,
+            b"import emb\nprint(\"Number of arguments\", emb.s('Im a python string'))\n\0".as_ptr()
+                as _,
         )
     };
     println!("ret: {:?}", ret);
