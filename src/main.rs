@@ -28,9 +28,20 @@ pub const PyModuleDef_HEAD_INIT: PyModuleDef_Base = PyModuleDef_Base {
 };
 
 #[repr(C)]
-pub struct Methods {
-    methods: [PyMethodDef; 4],
+pub struct Methods<const N: usize> {
+    methods: [PyMethodDef; N],
+    sentinel: PyMethodDef,
 }
+
+impl<const N: usize> Methods<N> {
+    pub const fn new(methods: [PyMethodDef; N]) -> Self {
+        Self {
+            methods,
+            sentinel: SentinelMethod,
+        }
+    }
+}
+
 pub const EmbMethod: PyMethodDef = PyMethodDef {
     ml_name: b"numargs\0".as_ptr() as _,
     ml_meth: Some(emb_numargs),
@@ -56,9 +67,7 @@ pub const SentinelMethod: PyMethodDef = PyMethodDef {
     ml_doc: std::ptr::null(),
 };
 
-pub const EmbMethods: Methods = Methods {
-    methods: [EmbMethod, EmbSMethod, EmbOMethod, SentinelMethod],
-};
+pub const EmbMethods: Methods<3> = Methods::new([EmbMethod, EmbSMethod, EmbOMethod]);
 
 pub const EmptySlot: PyModuleDef_Slot = PyModuleDef_Slot {
     slot: 0,
